@@ -32,24 +32,36 @@ jobs:
           }
           & $iscc installer/TricksStudio.iss
           if ($LASTEXITCODE -ne 0) { throw 'Installer build failed' }
-      - name: Verify with Microsoft Defender and test installation
+      - name: Test installation and app startup
+        shell: pwsh
+        run: |
+          $installer = (Resolve-Path ./out/TricksStudioSetup.exe).Path
+          $target = Join-Path $env:RUNNER_TEMP 'Tricks Studio verification'
+          $setup = Start-Process $installer -ArgumentList @('/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', "/DIR=""$target""") -Wait -PassThru
+          if ($setup.ExitCode -ne 0) { throw 'Installer failed' }
+          $app = Start-Process (Join-Path $target 'TricksStudio.exe') -ArgumentList '--smoke-test' -PassThru
+          if (!$app.WaitForExit(30000)) { $app.Kill(); throw 'App startup test timed out' }
+          if ($app.ExitCode -ne 0) { throw 'App startup test failed' }
+      - name: Verify with Microsoft Defender
         shell: pwsh
         run: |
           $status = Get-MpComputerStatus
+          if (!$status.AntivirusEnabled -or !$status.RealTimeProtectionEnabled) {
+            if ((Get-Service WinDefend).Status -ne 'Running') { Start-Service WinDefend }
+            Set-MpPreference -DisableRealtimeMonitoring $false
+            $status = Get-MpComputerStatus
+          }
           if (!$status.AntivirusEnabled -or !$status.RealTimeProtectionEnabled) {
             throw 'This runner cannot verify the installer with active Microsoft Defender.'
           }
           $started = [DateTime]::UtcNow
           $installer = (Resolve-Path ./out/TricksStudioSetup.exe).Path
-          Start-MpScan -ScanType CustomScan -ScanPath $installer
-          if (!(Test-Path $installer)) { throw 'Installer missing after Defender scan' }
           $target = Join-Path $env:RUNNER_TEMP 'Tricks Studio verification'
-          $setup = Start-Process $installer -ArgumentList @('/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', "/DIR=""$target""") -Wait -PassThru
-          if ($setup.ExitCode -ne 0) { throw 'Installer failed' }
+          Start-MpScan -ScanType CustomScan -ScanPath $installer
           Start-MpScan -ScanType CustomScan -ScanPath $target
-          $app = Start-Process (Join-Path $target 'TricksStudio.exe') -ArgumentList '--smoke-test' -PassThru
-          if (!$app.WaitForExit(30000)) { $app.Kill(); throw 'App startup test timed out' }
-          if ($app.ExitCode -ne 0) { throw 'App startup test failed' }
+          if (!(Test-Path $installer) -or !(Test-Path (Join-Path $target 'TricksStudio.exe'))) {
+            throw 'An expected file was missing after the Defender scan.'
+          }
           $detections = Get-MpThreatDetection | Where-Object {
             $_.InitialDetectionTime.ToUniversalTime() -ge $started -and
             ($_.Resources -match 'TricksStudioSetup\.exe|Tricks Studio verification')
