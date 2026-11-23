@@ -1,0 +1,62 @@
+name: Windows installer
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'desktop/**'
+      - 'installer/**'
+      - '.github/workflows/windows-installer.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: windows-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+      - name: Build app
+        run: dotnet publish desktop/TricksStudio.csproj -c Release -r win-x64 --self-contained true -o publish
+      - name: Build installer
+        shell: pwsh
+        run: |
+          $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
+          if (!(Test-Path $iscc)) {
+            choco install innosetup --yes --no-progress
+            if ($LASTEXITCODE -ne 0) { throw 'Inno Setup installation failed' }
+          }
+          & $iscc installer/TricksStudio.iss
+          if ($LASTEXITCODE -ne 0) { throw 'Installer build failed' }
+      - name: Verify with Microsoft Defender and test installation
+        shell: pwsh
+        run: |
+          $status = Get-MpComputerStatus
+          if (!$status.AntivirusEnabled -or !$status.RealTimeProtectionEnabled) {
+            throw 'This runner cannot verify the installer with active Microsoft Defender.'
+          }
+          $started = [DateTime]::UtcNow
+          $installer = (Resolve-Path ./out/TricksStudioSetup.exe).Path
+          Start-MpScan -ScanType CustomScan -ScanPath $installer
+          if (!(Test-Path $installer)) { throw 'Installer missing after Defender scan' }
+          $target = Join-Path $env:RUNNER_TEMP 'Tricks Studio verification'
+          $setup = Start-Process $installer -ArgumentList @('/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', "/DIR=""$target""") -Wait -PassThru
+          if ($setup.ExitCode -ne 0) { throw 'Installer failed' }
+          Start-MpScan -ScanType CustomScan -ScanPath $target
+          $app = Start-Process (Join-Path $target 'TricksStudio.exe') -ArgumentList '--smoke-test' -PassThru
+          if (!$app.WaitForExit(30000)) { $app.Kill(); throw 'App startup test timed out' }
+          if ($app.ExitCode -ne 0) { throw 'App startup test failed' }
+          $detections = Get-MpThreatDetection | Where-Object {
+            $_.InitialDetectionTime.ToUniversalTime() -ge $started -and
+            ($_.Resources -match 'TricksStudioSetup\.exe|Tricks Studio verification')
+          }
+          if ($detections) { throw 'Defender reported a detection' }
+      - uses: actions/upload-artifact@v4
+        with:
+          name: TricksStudioSetup-verified
+          path: out/TricksStudioSetup.exe
+          if-no-files-found: error
