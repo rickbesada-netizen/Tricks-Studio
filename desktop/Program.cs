@@ -57,13 +57,13 @@ public sealed class Editor : Window
         Foreground = Brushes.White;
         var layout = new DockPanel { Margin = new Thickness(14) };
         Content = layout;
-        void Dock(UIElement element, Dock edge)
+        void AddDocked(UIElement element, Dock edge)
         {
             DockPanel.SetDock(element, edge);
             layout.Children.Add(element);
         }
         var header = new DockPanel { Margin = new Thickness(4, 0, 4, 12) };
-        Dock(header, Dock.Top);
+        AddDocked(header, Dock.Top);
         var brand = Caption("◈   Tricks Studio", 22);
         brand.Foreground = Ink("#AAE8C1");
         header.Children.Add(brand);
@@ -74,9 +74,9 @@ public sealed class Editor : Window
         AddButton(toolbar, "Undo", () => { if (history.TryPop(out var previous)) { clips.Clear(); clips.AddRange(previous); Refresh(0); } });
         AddButton(toolbar, "Export MP4", async () => await Export());
         status.Foreground = Ink("#B8C7CC");
-        Dock(status, Dock.Bottom);
+        AddDocked(status, Dock.Bottom);
         var timeline = new StackPanel();
-        Dock(PanelBox(timeline), Dock.Bottom);
+        AddDocked(PanelBox(timeline), Dock.Bottom);
         var tools = new WrapPanel();
         timeline.Children.Add(tools);
         tools.Children.Add(Caption("Sequence", 17));
@@ -93,7 +93,7 @@ public sealed class Editor : Window
         ScrollViewer.SetHorizontalScrollBarVisibility(sequence, ScrollBarVisibility.Auto);
         timeline.Children.Add(sequence);
         var inspector = new StackPanel { Width = 185 };
-        Dock(PanelBox(inspector), Dock.Right);
+        AddDocked(PanelBox(inspector), Dock.Right);
         inspector.Children.Add(Caption("Clip inspector", 17));
         inspector.Children.Add(Caption("Source in · seconds"));
         inspector.Children.Add(start);
@@ -104,7 +104,7 @@ public sealed class Editor : Window
         inspector.Children.Add(mute);
         AddButton(inspector, "Apply trim", Apply);
         var sources = new StackPanel { Width = 180 };
-        Dock(PanelBox(sources), Dock.Left);
+        AddDocked(PanelBox(sources), Dock.Left);
         sources.Children.Add(Caption("Project media", 17));
         AddButton(sources, "+  Import video", async () => await Import());
         sources.Children.Add(new ScrollViewer { Content = sourceList, VerticalScrollBarVisibility = ScrollBarVisibility.Auto, MaxHeight = 365 });
