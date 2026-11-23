@@ -46,51 +46,91 @@ public sealed class Editor : Window
     public Editor()
     {
         Title = "Tricks Studio";
-        Width = 1050;
-        Height = 750;
-        MinWidth = 830;
-        MinHeight = 600;
-        Background = new SolidColorBrush(Color.FromRgb(234, 240, 236));
-        var layout = new DockPanel { Margin = new Thickness(16) };
+        Width = 1250;
+        Height = 800;
+        MinWidth = 880;
+        MinHeight = 620;
+        Resources.MergedDictionaries.Add(new ResourceDictionary { Source = new Uri("/TricksStudio;component/Theme.xaml", UriKind.Relative) });
+        FontFamily = new FontFamily("Segoe UI");
+        FontSize = 14;
+        Background = Ink("#101519");
+        Foreground = Brushes.White;
+        var layout = new DockPanel { Margin = new Thickness(14) };
         Content = layout;
-        var toolbar = new WrapPanel();
-        DockPanel.SetDock(toolbar, Dock.Top);
-        layout.Children.Add(toolbar);
-        AddButton(toolbar, "Add video", async () => await Import());
-        AddButton(toolbar, "Open project", Open);
-        AddButton(toolbar, "Save project", Save);
-        AddButton(toolbar, "Undo", () =>
+        void Dock(UIElement element, Dock edge)
         {
-            if (!history.TryPop(out var previous)) return;
-            clips.Clear();
-            clips.AddRange(previous);
-            Refresh(0);
-        });
+            DockPanel.SetDock(element, edge);
+            layout.Children.Add(element);
+        }
+        var header = new DockPanel { Margin = new Thickness(4, 0, 4, 12) };
+        Dock(header, Dock.Top);
+        var brand = Caption("◈   Tricks Studio", 22);
+        brand.Foreground = Ink("#AAE8C1");
+        header.Children.Add(brand);
+        var toolbar = new WrapPanel { HorizontalAlignment = HorizontalAlignment.Right };
+        header.Children.Add(toolbar);
+        AddButton(toolbar, "Open project", Open);
+        AddButton(toolbar, "Save", Save);
+        AddButton(toolbar, "Undo", () => { if (history.TryPop(out var previous)) { clips.Clear(); clips.AddRange(previous); Refresh(0); } });
         AddButton(toolbar, "Export MP4", async () => await Export());
-        var editing = new StackPanel();
-        DockPanel.SetDock(editing, Dock.Bottom);
-        layout.Children.Add(editing);
-        editing.Children.Add(seek);
-        var controls = new WrapPanel();
-        editing.Children.Add(controls);
-        AddButton(controls, "Play", Play);
-        AddButton(controls, "Pause", Pause);
-        controls.Children.Add(new Label { Content = "Source in (s)" });
-        controls.Children.Add(start);
-        controls.Children.Add(new Label { Content = "Source out (s)" });
-        controls.Children.Add(end);
-        controls.Children.Add(mute);
-        AddButton(controls, "Apply trim", Apply);
-        var timeline = new WrapPanel();
-        editing.Children.Add(timeline);
-        AddButton(timeline, "Split", Split);
-        AddButton(timeline, "Move earlier", () => Move(-1));
-        AddButton(timeline, "Move later", () => Move(1));
-        AddButton(timeline, "Remove clip", Remove);
-        editing.Children.Add(sequence);
-        editing.Children.Add(status);
-        status.Text = "Add a video to begin.";
-        layout.Children.Add(new Border { Background = Brushes.Black, Child = preview });
+        status.Foreground = Ink("#B8C7CC");
+        Dock(status, Dock.Bottom);
+        var timeline = new StackPanel();
+        Dock(PanelBox(timeline), Dock.Bottom);
+        var tools = new WrapPanel();
+        timeline.Children.Add(tools);
+        tools.Children.Add(Caption("Sequence", 17));
+        AddButton(tools, "Split", Split);
+        AddButton(tools, "Move earlier", () => Move(-1));
+        AddButton(tools, "Move later", () => Move(1));
+        AddButton(tools, "Remove", Remove);
+        sequence.Height = 85;
+        sequence.Background = Ink("#11191F");
+        sequence.BorderThickness = new Thickness(0);
+        var strip = new FrameworkElementFactory(typeof(StackPanel));
+        strip.SetValue(StackPanel.OrientationProperty, Orientation.Horizontal);
+        sequence.ItemsPanel = new ItemsPanelTemplate(strip);
+        ScrollViewer.SetHorizontalScrollBarVisibility(sequence, ScrollBarVisibility.Auto);
+        timeline.Children.Add(sequence);
+        var inspector = new StackPanel { Width = 185 };
+        Dock(PanelBox(inspector), Dock.Right);
+        inspector.Children.Add(Caption("Clip inspector", 17));
+        inspector.Children.Add(Caption("Source in · seconds"));
+        inspector.Children.Add(start);
+        inspector.Children.Add(Caption("Source out · seconds"));
+        inspector.Children.Add(end);
+        start.Width = end.Width = double.NaN;
+        mute.Foreground = Brushes.White;
+        inspector.Children.Add(mute);
+        AddButton(inspector, "Apply trim", Apply);
+        var sources = new StackPanel { Width = 180 };
+        Dock(PanelBox(sources), Dock.Left);
+        sources.Children.Add(Caption("Project media", 17));
+        AddButton(sources, "+  Import video", async () => await Import());
+        sources.Children.Add(new ScrollViewer { Content = sourceList, VerticalScrollBarVisibility = ScrollBarVisibility.Auto, MaxHeight = 365 });
+        var viewer = new DockPanel();
+        layout.Children.Add(PanelBox(viewer));
+        var title = Caption("Program monitor", 17);
+        DockPanel.SetDock(title, Dock.Top);
+        viewer.Children.Add(title);
+        var playback = new WrapPanel();
+        DockPanel.SetDock(playback, Dock.Bottom);
+        viewer.Children.Add(playback);
+        AddButton(playback, "▶  Play", Play);
+        AddButton(playback, "Pause", Pause);
+        playback.Children.Add(clock);
+        DockPanel.SetDock(seek, Dock.Bottom);
+        viewer.Children.Add(seek);
+        var screen = new Grid { Background = Ink("#0A1014") };
+        screen.Children.Add(preview);
+        empty.HorizontalAlignment = HorizontalAlignment.Center;
+        empty.VerticalAlignment = VerticalAlignment.Center;
+        empty.Children.Add(Caption("Import footage to begin", 18));
+        AddButton(empty, "Choose video…", async () => await Import());
+        screen.Children.Add(empty);
+        viewer.Children.Add(screen);
+        status.Text = "Ready";
+        seek.ValueChanged += (_, _) => clock.Text = TimeSpan.FromSeconds(seek.Value).ToString(@"hh\:mm\:ss\.ff");
         sequence.SelectionChanged += (_, _) => SelectClip();
         seek.ValueChanged += (_, _) => { if (!syncing && Selected is not null && pendingPosition is null) preview.Position = TimeSpan.FromSeconds(seek.Value); };
         preview.MediaOpened += (_, _) =>
@@ -123,9 +163,16 @@ public sealed class Editor : Window
         Closed += (_, _) => { timer.Stop(); preview.Close(); };
     }
 
+    private readonly StackPanel empty = new();
+    private readonly StackPanel sourceList = new();
+    private readonly TextBlock clock = Caption("00:00:00.00");
+    private static Brush Ink(string hex) => (Brush)new BrushConverter().ConvertFromString(hex)!;
+    private static TextBlock Caption(string value, double size = 13) => new() { Text = value, FontSize = size, Foreground = Ink("#DFE9EC"), FontWeight = FontWeights.SemiBold, Margin = new Thickness(6, 8, 8, 8), VerticalAlignment = VerticalAlignment.Center };
+    private static Border PanelBox(UIElement content) => new() { Background = Ink("#1A2229"), BorderBrush = Ink("#303D46"), BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(6), Padding = new Thickness(10), Margin = new Thickness(3), Child = content };
     private void AddButton(Panel panel, string name, Action action)
     {
         var button = new Button { Content = name, Padding = new Thickness(10, 5, 10, 5), Margin = new Thickness(2, 4, 4, 4) };
+        if (name == "Export MP4" || name == "Choose video…") { button.Background = Ink("#AAE8C1"); button.Foreground = Ink("#10271C"); }
         button.Click += (_, _) => { try { action(); } catch (Exception e) { status.Text = e.Message; } };
         panel.Children.Add(button);
     }
@@ -161,10 +208,22 @@ public sealed class Editor : Window
     {
         Pause();
         sequence.Items.Clear();
+        empty.Visibility = clips.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
+        sourceList.Children.Clear();
+        foreach (var path in clips.Select(c => c.Path).Distinct(StringComparer.OrdinalIgnoreCase))
+        {
+            var item = new Button { Content = new TextBlock { Text = Path.GetFileName(path), TextTrimming = TextTrimming.CharacterEllipsis }, ToolTip = path, Padding = new Thickness(8), Margin = new Thickness(2,4,2,0) };
+            item.Click += (_, _) => sequence.SelectedIndex = clips.FindIndex(c => c.Path == path);
+            sourceList.Children.Add(item);
+        }
         var offset = 0.0;
         foreach (var clip in clips)
         {
-            sequence.Items.Add($"{offset:0.00}s    {Path.GetFileName(clip.Path)}    [{clip.End - clip.Start:0.00}s]");
+            var duration = clip.End - clip.Start;
+            var tile = new StackPanel { Width = Math.Clamp(duration * 14, 75, 550) };
+            tile.Children.Add(new TextBlock { Text = Path.GetFileName(clip.Path), FontWeight = FontWeights.SemiBold, TextTrimming = TextTrimming.CharacterEllipsis });
+            tile.Children.Add(new TextBlock { Text = $"{offset:0.##}s  ·  {duration:0.##}s", FontSize = 12 });
+            sequence.Items.Add(tile);
             offset += clip.End - clip.Start;
         }
         if (clips.Count > 0) sequence.SelectedIndex = Math.Clamp(index, 0, clips.Count - 1);
