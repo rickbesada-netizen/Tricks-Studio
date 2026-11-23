@@ -1,16 +1,43 @@
 param([string]$Mode='Editor')
 $ErrorActionPreference='Stop'
 Add-Type -AssemblyName PresentationFramework,PresentationCore,WindowsBase
-if($Mode -eq 'Install'){
-  $dir=Join-Path $env:LOCALAPPDATA 'Tricks Studio'
-  [void](New-Item -ItemType Directory -Force -Path $dir)
-  $target=Join-Path $dir 'TricksStudio.exe'
-  if([IO.Path]::GetFullPath($env:TRICKS_STUDIO_EXE) -ne $target){Copy-Item -LiteralPath $env:TRICKS_STUDIO_EXE -Destination $target -Force}
-  $shortcut=(New-Object -ComObject WScript.Shell).CreateShortcut((Join-Path ([Environment]::GetFolderPath('Programs')) 'Tricks Studio.lnk'))
-  $shortcut.TargetPath=$target
-  $shortcut.WorkingDirectory=$dir
-  $shortcut.Save()
-  Start-Process -FilePath $target
+function Find-Tool([string]$name){
+  foreach($dir in @((Split-Path $env:TRICKS_STUDIO_EXE),(Join-Path $env:LOCALAPPDATA 'Tricks Studio'),(Join-Path $env:LOCALAPPDATA 'Microsoft\WinGet\Links'))){
+    $candidate=Join-Path $dir ($name+'.exe')
+    if(Test-Path -LiteralPath $candidate -PathType Leaf){return $candidate}
+  }
+  $command=Get-Command ($name+'.exe') -CommandType Application -ErrorAction SilentlyContinue | Select-Object -First 1
+  if($command){return $command.Source}
+}
+$installDir=Join-Path $env:LOCALAPPDATA 'Tricks Studio'
+$installedExe=Join-Path $installDir 'TricksStudio.exe'
+$runningExe=[IO.Path]::GetFullPath($env:TRICKS_STUDIO_EXE)
+if($Mode -eq 'Install' -or ($Mode -eq 'Auto' -and $runningExe -ne $installedExe)){
+  try {
+    [void](New-Item -ItemType Directory -Force -Path $installDir)
+    if($runningExe -ne $installedExe){Copy-Item -LiteralPath $runningExe -Destination $installedExe -Force}
+    $shortcut=(New-Object -ComObject WScript.Shell).CreateShortcut((Join-Path ([Environment]::GetFolderPath('Programs')) 'Tricks Studio.lnk'))
+    $shortcut.TargetPath=$installedExe
+    $shortcut.WorkingDirectory=$installDir
+    $shortcut.Save()
+  } catch {
+    [void][Windows.MessageBox]::Show("Setup could not install Tricks Studio. Close any running copy and try again.`n`n$($_.Exception.Message)",'Tricks Studio Setup')
+    return
+  }
+  if(!(Find-Tool 'ffmpeg') -or !(Find-Tool 'ffprobe')){
+    $winget=Get-Command winget.exe -CommandType Application -ErrorAction SilentlyContinue | Select-Object -First 1
+    if($winget){
+      try {
+        Start-Process -FilePath $winget.Source -ArgumentList @('install','--id','Gyan.FFmpeg','--exact','--source','winget','--scope','user') -Wait
+      } catch {
+        # Keep the installed editor available even if the dependency install fails.
+      }
+    }
+    if(!(Find-Tool 'ffmpeg') -or !(Find-Tool 'ffprobe')){
+      [void][Windows.MessageBox]::Show('Tricks Studio is installed. FFmpeg setup did not complete. To enable video import and export, install Gyan.FFmpeg with WinGet, or place ffmpeg.exe and ffprobe.exe in your Tricks Studio installation folder.','Tricks Studio Setup')
+    }
+  }
+  Start-Process -FilePath $installedExe
   return
 }
 [xml]$xaml=@'
@@ -22,7 +49,7 @@ if($Mode -eq 'Install'){
   <DockPanel Margin="18">
     <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Margin="0,0,0,14">
       <TextBlock Text="Tricks Studio" FontSize="23" FontWeight="SemiBold" Margin="0,0,24,0" VerticalAlignment="Center"/>
-      <Button Name="Import" Content="Add video"/><Button Name="Open" Content="Open project"/><Button Name="Save" Content="Save project"/><Button Name="Undo" Content="Undo"/><Button Name="Export" Content="Export MP4"/><Button Name="Install" Content="Install app"/>
+      <Button Name="Import" Content="Add video"/><Button Name="Open" Content="Open project"/><Button Name="Save" Content="Save project"/><Button Name="Undo" Content="Undo"/><Button Name="Export" Content="Export MP4"/>
     </StackPanel>
     <TextBlock Name="Status" DockPanel.Dock="Bottom" Foreground="#CDDDBE" Margin="0,12,0,0" TextWrapping="Wrap" Text="Add a video to start editing."/>
     <Grid>
@@ -56,7 +83,7 @@ if($Mode -eq 'Install'){
 </Window>
 '@
 $window=[Windows.Markup.XamlReader]::Load((New-Object System.Xml.XmlNodeReader $xaml))
-foreach($name in 'Import','Open','Save','Undo','Export','Install','Status','Preview','Seek','Time','Play','Pause','InTime','OutTime','Mute','Apply','Clips','Split','Earlier','Later','Remove'){
+foreach($name in 'Import','Open','Save','Undo','Export','Status','Preview','Seek','Time','Play','Pause','InTime','OutTime','Mute','Apply','Clips','Split','Earlier','Later','Remove'){
   Set-Variable -Scope Script -Name $name -Value $window.FindName($name)
 }
 $script:sequence=[Collections.Generic.List[object]]::new()
@@ -147,14 +174,6 @@ $timer.Start()
 $Seek.Add_ValueChanged({if(!$syncing -and $null -ne $Preview.Source){$Preview.Position=[TimeSpan]::FromSeconds($Seek.Value);$Time.Text="$(Number $Seek.Value) s"}})
 $Play.Add_Click({if($Clips.SelectedIndex -ge 0){$script:playing=$true;$clip=Selected-Clip;if($Preview.Position.TotalSeconds -ge $clip.End-.04){View-Clip $clip $clip.Start};$Preview.Play()}})
 $Pause.Add_Click({$script:playing=$false;$Preview.Pause()})
-function Find-Tool([string]$name){
-  foreach($dir in @((Split-Path $env:TRICKS_STUDIO_EXE),(Join-Path $env:LOCALAPPDATA 'Tricks Studio'))){
-    $candidate=Join-Path $dir ($name+'.exe')
-    if(Test-Path -LiteralPath $candidate -PathType Leaf){return $candidate}
-  }
-  $command=Get-Command ($name+'.exe') -CommandType Application -ErrorAction SilentlyContinue | Select-Object -First 1
-  if($command){return $command.Source}
-}
 function Inspect([string]$path){
   $probe=Find-Tool 'ffprobe'
   if(!$probe){throw 'Place ffprobe.exe and ffmpeg.exe beside TricksStudio.exe or add them to your Windows PATH.'}
@@ -259,14 +278,6 @@ $Export.Add_Click({
     $Export.IsEnabled=$false
     Tell 'Rendering 1080p MP4. Keep Tricks Studio open until export finishes.'
   }catch{if(Test-Path -LiteralPath $dir){Remove-Item -LiteralPath $dir -Recurse -Force};Tell $_.Exception.Message}
-})
-$Install.Add_Click({
-  try{
-    $target=Join-Path $env:LOCALAPPDATA 'Tricks Studio'
-    [void](New-Item -ItemType Directory -Force -Path $target)
-    foreach($tool in 'ffmpeg','ffprobe'){$source=Find-Tool $tool;$destination=Join-Path $target ($tool+'.exe');if($source -and $source -ne $destination){Copy-Item -LiteralPath $source -Destination $destination -Force}}
-    Start-Process -FilePath $env:TRICKS_STUDIO_EXE -ArgumentList '--install'
-  }catch{Tell $_.Exception.Message}
 })
 $window.Add_Closing({param($sender,$event);if($null -ne $exportJob){$event.Cancel=$true;Tell 'Wait for the current export to finish before closing.'}})
 Refresh 0

@@ -66,7 +66,7 @@ void API entry(void) {
     append(command, W("\" -NoProfile -NonInteractive -STA -ExecutionPolicy Bypass -File \""));
     append(command, path);
     append(command, W("\" -Mode "));
-    append(command, installer(imports.getCommandLine()) ? W("Install") : W("Editor"));
+    append(command, installer(imports.getCommandLine()) ? W("Install") : W("Auto"));
     startup.size = sizeof(startup);
     if (imports.setEnv(W("TRICKS_STUDIO_EXE"), executable) &&
         imports.start(shell, command, 0, 0, 0, 0x08000000, 0, 0, &startup, &process)) {

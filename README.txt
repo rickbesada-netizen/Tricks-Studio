@@ -1,28 +1,14 @@
 TRICKS STUDIO | Windows desktop preview
 
-Requirements
-  Windows 10 or 11 on an x64 PC, with Windows PowerShell 5.1 and WPF.
-  FFmpeg and FFprobe are used for clip inspection and MP4 export.
+Download and run TricksStudioSetup.exe on Windows 10 or 11 (x64).
+Setup installs Tricks Studio for your Windows account, adds a Start menu
+shortcut, and opens the editor. If FFmpeg is missing, setup uses WinGet to
+install it when available. WinGet may ask for input and needs internet access.
 
-Start editing
-  1. Extract Tricks-Studio-Windows.zip.
-  2. Install FFmpeg. If you use Windows Package Manager, run this command
-     in Terminal:
-       winget install --id Gyan.FFmpeg --exact
-     Open a new Windows session after installing if Windows has not picked
-     up the updated PATH. Alternatively, place ffmpeg.exe and ffprobe.exe
-     beside TricksStudio.exe.
-  3. Open TricksStudio.exe. Click Install app to add a Start menu shortcut.
-  4. Add video clips. Select a clip to scrub it, adjust its source in/out
-     points, toggle its audio, or split it at the current position.
-  5. Save a .fcstudio project or export the sequence to a 1080p MP4.
+If FFmpeg setup does not complete, run this in Windows Terminal:
+  winget install --id Gyan.FFmpeg --exact --source winget --scope user
+Alternatively, place ffmpeg.exe and ffprobe.exe in:
+  %LOCALAPPDATA%\Tricks Studio
 
-Project files reference the original videos by path. Keep them in place
-when you reopen a saved project. Preview playback uses Windows media
-codecs. MP4 export uses the codecs available in your FFmpeg build.
-The launcher is unsigned. This preview has one sequential video track.
-
-Source
-  source/editor.ps1 contains the native WPF editor.
-  source/launcher.c and source/build.py build the standalone launcher
-  on Linux with Python 3, GCC and GNU binutils.
+This unsigned preview has one sequential video track. Project files link
+to the original media. Keep those files in place when reopening a project.
